@@ -29,18 +29,21 @@ struct PlayMode : Mode {
 	Scene scene;
 
 	//hexapod leg to wobble:
-	Scene::Transform *hip = nullptr;
-	Scene::Transform *upper_leg = nullptr;
-	Scene::Transform *lower_leg = nullptr;
-	glm::quat hip_base_rotation;
-	glm::quat upper_leg_base_rotation;
-	glm::quat lower_leg_base_rotation;
-	float wobble = 0.0f;
+	Scene::Transform *player = nullptr;
+	struct Enemy {
+		glm::vec3 position;
+		float sonarCountdown;
+		bool sonarActive;
+		bool alive;
+		std::shared_ptr< Sound::PlayingSample > sonarSound;
 
-	glm::vec3 get_leg_tip_position();
+		Enemy(glm::vec3 pos) : position(pos), sonarCountdown(0.0f), sonarActive(false), alive(true) { }
+	};
+	std::vector<Enemy> enemy;
 
-	//music coming from the tip of the leg (as a demonstration):
-	std::shared_ptr< Sound::PlayingSample > leg_tip_loop;
+	float sonarCounter;
+
+	std::shared_ptr< Sound::PlayingSample > sonarSound;
 	
 	//camera:
 	Scene::Camera *camera = nullptr;
