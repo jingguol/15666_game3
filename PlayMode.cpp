@@ -63,11 +63,12 @@ PlayMode::PlayMode() : scene(*hexapod_scene) {
 	if (scene.cameras.size() != 1) throw std::runtime_error("Expecting scene to have exactly one camera, but it has " + std::to_string(scene.cameras.size()));
 	camera = &scene.cameras.front();
 
-	sonarCounter = 8.0f;
+	sonarCounter = 5.0f;
+	attackCounter = 0.0f;
 
-	for (int i = 0; i < 5; ++i) {
-		float x = static_cast<float>(rand() % 400 - 200);
-		float y = static_cast<float>(rand() % 400 - 200);
+	for (int i = 0; i < 10; ++i) {
+		float x = static_cast<float>(rand() % 200 - 100);
+		float y = static_cast<float>(rand() % 200 - 100);
 		enemy.push_back(Enemy(glm::vec3(x, y, 0.0f)));
 	}
 }
@@ -89,6 +90,10 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		} else if (evt.key.keysym.sym == SDLK_RIGHT) {
 			right.downs += 1;
 			right.pressed = true;
+			return true;
+		} else if (evt.key.keysym.sym == SDLK_z) {
+			shoot.downs += 1;
+			shoot.pressed = true;
 			return true;
 		}
 	} else if (evt.type == SDL_KEYUP) {
@@ -112,7 +117,7 @@ void PlayMode::update(float elapsed) {
 	// move and rotate
 	{
 		//combine inputs into a move:
-		constexpr float playerSpeed = 5.0f;
+		constexpr float playerSpeed = 10.0f;
 		
 		if (!left.pressed && right.pressed) {
 			camera->transform->rotation = camera->transform->rotation * 
@@ -144,23 +149,17 @@ void PlayMode::update(float elapsed) {
 		Sound::listener.set_position_right(frame_at, frame_right, 1.0f / 60.0f);
 	}
 
-	//reset button press counters:
-	left.downs = 0;
-	right.downs = 0;
-	up.downs = 0;
-	down.downs = 0;
-
 	sonarCounter -= elapsed;
 	if (sonarCounter <= 0) {
-		sonarSound = Sound::play_3D(*sonar1_sample, 1.0f, player->position, 15.0f);
-		sonarCounter = 8.0f;
+		sonarSound = Sound::play_3D(*sonar1_sample, 1.0f, player->position);
+		sonarCounter = 5.0f;
 
 		for (auto it = enemy.begin(); it != enemy.end(); ++it) {
 			if (!it->sonarActive) {
 				float distance = glm::distance(it->position, player->position);
 				if (it->alive && distance <= 30.0f) {
 					it->sonarActive = true;
-					it->sonarCountdown = (distance / 30.0f) * 1.0f;
+					it->sonarCountdown = (distance / 30.0f) * 4.0f;
 				}
 			}
 		}
@@ -170,11 +169,51 @@ void PlayMode::update(float elapsed) {
 		if (it->sonarActive) {
 			it->sonarCountdown -= elapsed;
 			if (it->sonarCountdown <= 0.0f) {
-				it->sonarSound = Sound::play_3D(*sonar2_sample, 1.0f, it->position, 10.0f);
+				float distance = glm::distance(it->position, player->position);
+				it->sonarSound = Sound::play_3D(*sonar2_sample, distance / 30.0f, it->position);
 				it->sonarActive = false;
 			}
 		}
 	}
+
+	if (shoot.downs > 0) {
+		if (attackCounter <= 0.0f) {
+			Sound::play_3D(*shoot_sample, 1.0f, player->position);
+			attackCounter = 10.0f;
+			torpedo.active = true;
+			torpedo.position = player->position;
+			glm::mat4x3 frame = camera->transform->make_local_to_parent();
+			glm::vec3 frame_up = frame[1];
+			torpedo.direction = frame_up;
+		}
+	}
+
+	if (attackCounter > 0.0f) {
+		attackCounter -= elapsed;
+	}
+
+	constexpr float torpedoSpeed = 25.0f;
+	if (torpedo.active) {
+		torpedo.position += torpedoSpeed * elapsed * torpedo.direction;
+		for (auto it = enemy.begin(); it != enemy.end(); ++it) {
+			if (glm::distance(torpedo.position, it->position) <= 5.0f) {
+				it->alive = false;
+				torpedo.active = false;
+				Sound::play_3D(*explosion_sample, 1.0f, it->position);
+			}
+		}
+		if (torpedo.position.x < -100.0f || torpedo.position.x > 100.0f ||
+			torpedo.position.y < -100.0f || torpedo.position.y > 100.0f) {
+				torpedo.active = false;
+			}
+	}
+
+	//reset button press counters:
+	left.downs = 0;
+	right.downs = 0;
+	up.downs = 0;
+	down.downs = 0;
+	shoot.downs = 0;
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
